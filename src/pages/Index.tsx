@@ -1,14 +1,18 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ResumeUploader } from "@/components/ResumeUploader";
 import { JobDescription } from "@/components/JobDescription";
 import { ResumePreview } from "@/components/ResumePreview";
 import { AITailoringProcess } from "@/components/AITailoringProcess";
+import { OpenAIKeyInput } from "@/components/OpenAIKeyInput";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toaster } from "@/components/ui/sonner";
 import { useToast } from "@/components/ui/use-toast";
 import { AppHeader } from "@/components/AppHeader";
+import { tailorResumeWithOpenAI } from "@/services/openai";
+import { getStoredApiKey, storeApiKey } from "@/utils/storage";
+import { toast } from "sonner";
 
 const Index = () => {
   const [resumeContent, setResumeContent] = useState<string>("");
@@ -17,12 +21,19 @@ const Index = () => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [tailoredResume, setTailoredResume] = useState<string>("");
   const [resumeFileName, setResumeFileName] = useState<string>("");
-  const { toast } = useToast();
+  const [openAIKey, setOpenAIKey] = useState<string>("");
+  const { toast: uiToast } = useToast();
+
+  useEffect(() => {
+    // Load the API key from localStorage on component mount
+    const storedKey = getStoredApiKey();
+    setOpenAIKey(storedKey);
+  }, []);
 
   const handleResumeUpload = (content: string, fileName: string) => {
     setResumeContent(content);
     setResumeFileName(fileName);
-    toast({
+    uiToast({
       title: "Resume Uploaded",
       description: `Successfully loaded ${fileName}`,
     });
@@ -36,9 +47,14 @@ const Index = () => {
     setJobUrl(url);
   };
 
+  const handleApiKeyChange = (key: string) => {
+    setOpenAIKey(key);
+    storeApiKey(key);
+  };
+
   const handleTailorResume = async () => {
     if (!resumeContent) {
-      toast({
+      uiToast({
         title: "Missing Resume",
         description: "Please upload a LaTeX resume file first",
         variant: "destructive",
@@ -47,7 +63,7 @@ const Index = () => {
     }
 
     if (!jobDescription && !jobUrl) {
-      toast({
+      uiToast({
         title: "Missing Job Information",
         description: "Please provide either a job description or URL",
         variant: "destructive",
@@ -55,66 +71,35 @@ const Index = () => {
       return;
     }
 
-    setIsProcessing(true);
-    try {
-      // In a real app, this would call an API to process the resume
-      await new Promise((resolve) => setTimeout(resolve, 3000)); // Simulating API call
-      
-      // For demo purposes, we'll just modify the resume slightly
-      const tailored = await simulateAITailoring(resumeContent, jobDescription || jobUrl);
-      setTailoredResume(tailored);
-      toast({
-        title: "Resume Tailored",
-        description: "Your resume has been customized for this job!",
-      });
-    } catch (error) {
-      toast({
-        title: "Processing Error",
-        description: "Failed to tailor resume. Please try again.",
+    if (!openAIKey) {
+      uiToast({
+        title: "OpenAI API Key Required",
+        description: "Please enter your OpenAI API key",
         variant: "destructive",
       });
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      // Use the job description or URL content
+      const jobContent = jobDescription || `Job URL: ${jobUrl}`;
+      
+      // Call the OpenAI service
+      const tailored = await tailorResumeWithOpenAI(
+        resumeContent, 
+        jobContent,
+        { apiKey: openAIKey }
+      );
+      
+      setTailoredResume(tailored);
+      toast.success("Resume tailored successfully for this job!");
+    } catch (error) {
+      toast.error("Failed to tailor resume: " + (error as Error).message);
       console.error(error);
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  // Simulates AI tailoring for demo purposes
-  const simulateAITailoring = async (resume: string, job: string): Promise<string> => {
-    // This is a simplified example - in a real app, you'd use an AI service
-    const sections = {
-      skills: ["communication", "teamwork", "problem-solving", "adaptability", "leadership"],
-      keywords: ["project management", "agile", "data analysis", "machine learning", "typescript"]
-    };
-    
-    // Check for keywords in the job description
-    const relevantSkills = sections.skills.filter(skill => 
-      job.toLowerCase().includes(skill.toLowerCase())
-    );
-    
-    const relevantKeywords = sections.keywords.filter(keyword => 
-      job.toLowerCase().includes(keyword.toLowerCase())
-    );
-    
-    // Add those keywords to the resume if not already there
-    let tailoredResume = resume;
-    
-    // Simple modifications for demo purposes
-    if (relevantSkills.length > 0) {
-      tailoredResume = tailoredResume.replace(
-        /\\section{Skills}/i,
-        `\\section{Skills}\n% Added based on job requirements\n\\textbf{${relevantSkills.join(', ')}}`
-      );
-    }
-    
-    if (relevantKeywords.length > 0) {
-      tailoredResume = tailoredResume.replace(
-        /\\begin{document}/i,
-        `\\begin{document}\n% Tailored for job with focus on: ${relevantKeywords.join(', ')}`
-      );
-    }
-    
-    return tailoredResume;
   };
 
   return (
@@ -158,7 +143,14 @@ const Index = () => {
               </div>
             </div>
             
-            <div className="mt-6">
+            <div className="mt-6 border-t pt-4">
+              <div className="mb-4">
+                <OpenAIKeyInput 
+                  apiKey={openAIKey} 
+                  onChange={handleApiKeyChange}
+                />
+              </div>
+              
               <AITailoringProcess 
                 onProcess={handleTailorResume} 
                 isProcessing={isProcessing}
