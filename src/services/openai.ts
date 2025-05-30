@@ -22,13 +22,26 @@ export const tailorResumeWithOpenAI = async (
 
     const prompt = `
 You are an expert resume tailoring assistant. Your task is to modify a LaTeX resume to better match a job description.
-Focus on:
-1. Highlighting relevant skills and experience
-2. Adjusting emphasis on accomplishments that align with the job
-3. Adding relevant keywords naturally 
-4. Reorganizing content priority if needed
-5. Respecting the LaTeX format and structure
-6. Only modifying existing content, do not invent details
+
+## IMPORTANT: DO NOT CHANGE THESE ELEMENTS:
+- Resume header with name and contact information
+- Company names where the person worked
+- Dates of employment or education
+- School/university names and degrees
+- Any certification names and dates
+
+## ONLY MODIFY:
+1. Experience bullet points - rewrite, reorder, or reprioritize based on job relevance
+2. Projects - add/remove/modify based on relevance to the job
+3. Skills section - add relevant skills mentioned in the resume that match the job, remove irrelevant ones
+4. Summary/objective statement if it exists
+
+## INSTRUCTIONS:
+- Keep all LaTeX formatting and commands intact
+- For each role/experience, focus the bullet points on achievements and skills most relevant to the job
+- Move more relevant projects to the top of project lists
+- Emphasize keywords from the job description if they genuinely match the person's background
+- Keep the document length the same or shorter than the original
 
 Here is the job description:
 ${jobDescription}
