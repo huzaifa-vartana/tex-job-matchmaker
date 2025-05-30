@@ -4,14 +4,20 @@ import { ResumeUploader } from "@/components/ResumeUploader";
 import { JobDescription } from "@/components/JobDescription";
 import { ResumePreview } from "@/components/ResumePreview";
 import { AITailoringProcess } from "@/components/AITailoringProcess";
-import { OpenAIKeyInput } from "@/components/OpenAIKeyInput";
+import { ModelApiKeyInput } from "@/components/ModelApiKeyInput";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toaster } from "@/components/ui/sonner";
 import { useToast } from "@/components/ui/use-toast";
 import { AppHeader } from "@/components/AppHeader";
 import { tailorResumeWithOpenAI } from "@/services/openai";
-import { getStoredApiKey, storeApiKey } from "@/utils/storage";
+import { tailorResumeWithGroq } from "@/services/groq";
+import { 
+  getStoredApiKey, 
+  storeApiKey, 
+  getPreferredModel, 
+  storePreferredModel 
+} from "@/utils/storage";
 import { toast } from "sonner";
 
 const Index = () => {
@@ -22,12 +28,19 @@ const Index = () => {
   const [tailoredResume, setTailoredResume] = useState<string>("");
   const [resumeFileName, setResumeFileName] = useState<string>("");
   const [openAIKey, setOpenAIKey] = useState<string>("");
+  const [groqKey, setGroqKey] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<'openai' | 'groq'>('openai');
   const { toast: uiToast } = useToast();
 
   useEffect(() => {
-    // Load the API key from localStorage on component mount
-    const storedKey = getStoredApiKey();
-    setOpenAIKey(storedKey);
+    // Load API keys and preferred model from localStorage on component mount
+    const storedOpenAIKey = getStoredApiKey('openai');
+    const storedGroqKey = getStoredApiKey('groq');
+    const preferredModel = getPreferredModel();
+    
+    setOpenAIKey(storedOpenAIKey);
+    setGroqKey(storedGroqKey);
+    setSelectedModel(preferredModel);
   }, []);
 
   const handleResumeUpload = (content: string, fileName: string) => {
@@ -47,9 +60,19 @@ const Index = () => {
     setJobUrl(url);
   };
 
-  const handleApiKeyChange = (key: string) => {
+  const handleOpenAIKeyChange = (key: string) => {
     setOpenAIKey(key);
-    storeApiKey(key);
+    storeApiKey(key, 'openai');
+  };
+
+  const handleGroqKeyChange = (key: string) => {
+    setGroqKey(key);
+    storeApiKey(key, 'groq');
+  };
+
+  const handleModelChange = (model: 'openai' | 'groq') => {
+    setSelectedModel(model);
+    storePreferredModel(model);
   };
 
   const handleTailorResume = async () => {
@@ -71,10 +94,11 @@ const Index = () => {
       return;
     }
 
-    if (!openAIKey) {
+    const currentKey = selectedModel === 'openai' ? openAIKey : groqKey;
+    if (!currentKey) {
       uiToast({
-        title: "OpenAI API Key Required",
-        description: "Please enter your OpenAI API key",
+        title: `${selectedModel === 'openai' ? 'OpenAI' : 'Groq'} API Key Required`,
+        description: `Please enter your ${selectedModel === 'openai' ? 'OpenAI' : 'Groq'} API key`,
         variant: "destructive",
       });
       return;
@@ -85,17 +109,27 @@ const Index = () => {
       // Use the job description or URL content
       const jobContent = jobDescription || `Job URL: ${jobUrl}`;
       
-      // Call the OpenAI service
-      const tailored = await tailorResumeWithOpenAI(
-        resumeContent, 
-        jobContent,
-        { apiKey: openAIKey }
-      );
+      // Call the appropriate service based on the selected model
+      let tailored: string;
+      
+      if (selectedModel === 'openai') {
+        tailored = await tailorResumeWithOpenAI(
+          resumeContent, 
+          jobContent,
+          { apiKey: openAIKey }
+        );
+      } else {
+        tailored = await tailorResumeWithGroq(
+          resumeContent, 
+          jobContent,
+          { apiKey: groqKey }
+        );
+      }
       
       setTailoredResume(tailored);
-      toast.success("Resume tailored successfully for this job!");
+      toast.success(`Resume tailored successfully using ${selectedModel === 'openai' ? 'OpenAI' : 'Groq'}!`);
     } catch (error) {
-      toast.error("Failed to tailor resume: " + (error as Error).message);
+      toast.error(`Failed to tailor resume: ${(error as Error).message}`);
       console.error(error);
     } finally {
       setIsProcessing(false);
@@ -145,9 +179,13 @@ const Index = () => {
             
             <div className="mt-6 border-t pt-4">
               <div className="mb-4">
-                <OpenAIKeyInput 
-                  apiKey={openAIKey} 
-                  onChange={handleApiKeyChange}
+                <ModelApiKeyInput 
+                  openAIKey={openAIKey}
+                  groqKey={groqKey}
+                  selectedModel={selectedModel}
+                  onOpenAIKeyChange={handleOpenAIKeyChange}
+                  onGroqKeyChange={handleGroqKeyChange}
+                  onModelChange={handleModelChange}
                 />
               </div>
               
